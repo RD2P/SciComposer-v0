@@ -27,7 +27,7 @@ class GalaxyTool:
         )
 
 
-class ToolRetrieverAgent:
+class RetrieverAgent:
     def __init__(self, tools_path: str | Path | None = None) -> None:
         self.tools_path = Path(tools_path) if tools_path else None
         self.tools = self._load_tools()
