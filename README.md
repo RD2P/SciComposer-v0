@@ -1,8 +1,8 @@
-# SciFlowGent
+# SciComposer
 
-**SciFlowGent** (Scientific Workflow Agent) is a multi-agent framework for generating Galaxy scientific workflows from natural language requests.
+**SciComposer** is a multi-agent framework for retrieval-augmented Galaxy workflow design from natural language requests.
 
-Users describe a scientific analysis task, provide input data types and desired outputs, and SciFlowGent recommends a workflow composed of Galaxy tools and processing steps. The system combines planning, retrieval, and validation agents to construct scientifically relevant and technically compatible workflows.
+Users describe a scientific analysis task, provide input data types and desired outputs, and SciComposer recommends a workflow composed of Galaxy tools and processing steps. The system combines planning, retrieval, building, and validation agents to construct scientifically relevant and technically compatible workflows.
 
 ---
 
