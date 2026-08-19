@@ -23,22 +23,15 @@ def retriever_node(state: WorkflowState) -> WorkflowState:
     plan = state.get("workflow_plan", {})
     goal = plan.get("goal", "")
     stages = plan.get("stages", [])
-    candidate_tools: list[dict] = []
     stage_context = []
     for stage in stages:
         stage_name = stage.get("name", "")
         description = stage.get("description", "")
         stage_context.append(f"{stage_name}: {description}")
-        for tool in retriever_agent.retrieve_tools(
-            f"{goal}. {stage_name}: {description}", top_k=3
-        ):
-            candidate_tools.append(
-                {**tool, "stage": stage_name, "tool": tool.get("name", "")}
-            )
 
     workflow_query = ". ".join([goal, *stage_context]).strip()
     return {
-        "candidate_tools": candidate_tools,
+        "candidate_tools": retriever_agent.retrieve_plan_tools(plan, top_k=3),
         "workflow_examples": retriever_agent.retrieve_workflows(workflow_query),
     }
 

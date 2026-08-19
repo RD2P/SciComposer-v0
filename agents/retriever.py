@@ -41,12 +41,14 @@ class RetrieverAgent:
         model: Any | None = None,
         model_name: str | None = None,
     ) -> None:
+        self._gpu_resources = faiss.StandardGpuResources()
         data_dir = Path(__file__).resolve().parent.parent / "data"
         self._tools = self._load_bundle(
             Path(tools_index_path) if tools_index_path else data_dir / "tools.faiss",
             Path(tools_metadata_path)
             if tools_metadata_path
             else data_dir / "tools_index_metadata.json",
+            self._gpu_resources,
         )
         self._workflows = self._load_bundle(
             Path(workflows_index_path)
@@ -55,6 +57,7 @@ class RetrieverAgent:
             Path(workflows_metadata_path)
             if workflows_metadata_path
             else data_dir / "workflows_index_metadata.json",
+            self._gpu_resources,
         )
 
         if self._tools["model"] != self._workflows["model"]:
@@ -62,13 +65,25 @@ class RetrieverAgent:
         if self._tools["dimension"] != self._workflows["dimension"]:
             raise ValueError("Tool and workflow indexes use different dimensions")
 
-        expected_model = model_name or self._tools["model"]
-        self.model = model or SentenceTransformer(expected_model)
+        expected_model = self._tools["model"]
+        if model_name is not None and model_name != expected_model:
+            raise ValueError(
+                f"Requested model {model_name!r} does not match index model {expected_model!r}"
+            )
+        self.model = model or SentenceTransformer(
+            expected_model, device="cuda"
+        )
 
     @staticmethod
-    def _load_bundle(index_path: Path, metadata_path: Path) -> dict[str, Any]:
+    def _load_bundle(
+        index_path: Path,
+        metadata_path: Path,
+        gpu_resources: Any | None = None,
+    ) -> dict[str, Any]:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         index = faiss.read_index(str(index_path))
+        if gpu_resources is not None:
+            index = faiss.index_cpu_to_gpu(gpu_resources, 0, index)
         dimension = int(metadata["dimension"])
         if index.d != dimension:
             raise ValueError(
@@ -116,4 +131,19 @@ class RetrieverAgent:
             query = f"{workflow_spec.get('goal', '')}. {stage_name}: {description}"
             for tool in self.retrieve_tools(query):
                 results.append({**tool, "stage": stage_name, "tool": tool.get("name", "")})
-        return results
+        return sorted(results, key=lambda result: result["score"], reverse=True)
+
+    def retrieve_plan_tools(
+        self, workflow_spec: dict[str, Any], top_k: int = 3
+    ) -> list[dict[str, Any]]:
+        if top_k <= 0:
+            return []
+
+        best_by_tool: dict[str, dict[str, Any]] = {}
+        for result in self.retrieve(workflow_spec):
+            tool_key = result.get("tool_id", result.get("name", ""))
+            if tool_key not in best_by_tool or result["score"] > best_by_tool[tool_key]["score"]:
+                best_by_tool[tool_key] = result
+        return sorted(
+            best_by_tool.values(), key=lambda result: result["score"], reverse=True
+        )[:top_k]
