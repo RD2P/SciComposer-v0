@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import faiss
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
 
 @dataclass(frozen=True)
 class GalaxyTool:
@@ -28,91 +32,88 @@ class GalaxyTool:
 
 
 class RetrieverAgent:
-    def __init__(self, tools_path: str | Path | None = None) -> None:
-        self.tools_path = Path(tools_path) if tools_path else None
-        self.tools = self._load_tools()
+    def __init__(
+        self,
+        tools_index_path: str | Path | None = None,
+        tools_metadata_path: str | Path | None = None,
+        workflows_index_path: str | Path | None = None,
+        workflows_metadata_path: str | Path | None = None,
+        model: Any | None = None,
+        model_name: str | None = None,
+    ) -> None:
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+        self._tools = self._load_bundle(
+            Path(tools_index_path) if tools_index_path else data_dir / "tools.faiss",
+            Path(tools_metadata_path)
+            if tools_metadata_path
+            else data_dir / "tools_index_metadata.json",
+        )
+        self._workflows = self._load_bundle(
+            Path(workflows_index_path)
+            if workflows_index_path
+            else data_dir / "workflows.faiss",
+            Path(workflows_metadata_path)
+            if workflows_metadata_path
+            else data_dir / "workflows_index_metadata.json",
+        )
 
-    def _load_tools(self) -> list[GalaxyTool]:
-        if not self.tools_path or not self.tools_path.exists():
-            return self._default_tools()
+        if self._tools["model"] != self._workflows["model"]:
+            raise ValueError("Tool and workflow indexes use different embedding models")
+        if self._tools["dimension"] != self._workflows["dimension"]:
+            raise ValueError("Tool and workflow indexes use different dimensions")
 
-        if self.tools_path.is_file():
-            raw = json.loads(self.tools_path.read_text(encoding="utf-8"))
-            return [GalaxyTool.from_dict(item) for item in raw]
+        expected_model = model_name or self._tools["model"]
+        self.model = model or SentenceTransformer(expected_model)
 
-        return self._default_tools()
+    @staticmethod
+    def _load_bundle(index_path: Path, metadata_path: Path) -> dict[str, Any]:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        index = faiss.read_index(str(index_path))
+        dimension = int(metadata["dimension"])
+        if index.d != dimension:
+            raise ValueError(
+                f"Index dimension {index.d} does not match metadata dimension {dimension}"
+            )
 
-    def _default_tools(self) -> list[GalaxyTool]:
-        return [
-            GalaxyTool(
-                tool_id="fastqc",
-                name="FastQC",
-                description="Quality control for raw sequencing reads",
-                inputs=["fastq"],
-                outputs=["qc_report"],
-                tags=["rna-seq", "qc", "fastq"],
-            ),
-            GalaxyTool(
-                tool_id="trimmomatic",
-                name="Trimmomatic",
-                description="Read trimming and adapter removal",
-                inputs=["fastq"],
-                outputs=["trimmed_fastq"],
-                tags=["rna-seq", "preprocessing", "fastq"],
-            ),
-            GalaxyTool(
-                tool_id="hisat2",
-                name="HISAT2",
-                description="Spliced alignment for RNA-seq reads",
-                inputs=["fastq", "reference_genome"],
-                outputs=["bam"],
-                tags=["rna-seq", "alignment"],
-            ),
-            GalaxyTool(
-                tool_id="featurecounts",
-                name="FeatureCounts",
-                description="Count reads overlapping genomic features",
-                inputs=["bam", "annotation"],
-                outputs=["count_table"],
-                tags=["rna-seq", "quantification"],
-            ),
-            GalaxyTool(
-                tool_id="deseq2",
-                name="DESeq2",
-                description="Differential expression analysis",
-                inputs=["count_table"],
-                outputs=["differential_expression_table"],
-                tags=["rna-seq", "expression"],
-            ),
-            GalaxyTool(
-                tool_id="volcano_plot",
-                name="Volcano Plot",
-                description="Create differential expression visualization",
-                inputs=["differential_expression_table"],
-                outputs=["plot"],
-                tags=["rna-seq", "reporting", "visualization"],
-            ),
-        ]
+        records = metadata.get("tools", metadata.get("workflows", []))
+        by_index = {int(record["index"]): record for record in records}
+        return {
+            "index": index,
+            "model": metadata["model"],
+            "dimension": dimension,
+            "records": by_index,
+        }
+
+    def _search(self, bundle: dict[str, Any], query: str, top_k: int) -> list[dict[str, Any]]:
+        if top_k <= 0:
+            return []
+        query_vector = self.model.encode(
+            [query], convert_to_numpy=True, normalize_embeddings=True
+        )
+        query_vector = np.asarray(query_vector, dtype=np.float32)
+        scores, indexes = bundle["index"].search(
+            query_vector, min(top_k, bundle["index"].ntotal)
+        )
+
+        results = []
+        for score, index in zip(scores[0], indexes[0]):
+            record = bundle["records"].get(int(index))
+            if record is not None:
+                results.append({**record, "score": float(score)})
+        return results
+
+    def retrieve_tools(self, query: str, top_k: int = 3) -> list[dict[str, Any]]:
+        return self._search(self._tools, query, top_k)
+
+    def retrieve_workflows(self, query: str, top_k: int = 3) -> list[dict[str, Any]]:
+        return self._search(self._workflows, query, top_k)
 
     def retrieve(self, workflow_spec: dict[str, Any]) -> list[dict[str, Any]]:
-        stages = workflow_spec.get("stages", [])
-
         results: list[dict[str, Any]] = []
-        for stage in stages:
-            matches = [
-                tool
-                for tool in self.tools
-                if stage in (tool.tags or [])
-            ]
-            if not matches:
-                matches = self.tools[:1]
-            for tool in matches[:3]:
-                results.append(
-                    {
-                        "stage": stage,
-                        "tool_id": tool.tool_id,
-                        "tool": tool.name,
-                        "description": tool.description,
-                    }
-                )
+        for stage in workflow_spec.get("stages", []):
+            stage_name = stage.get("name", "") if isinstance(stage, dict) else str(stage)
+            description = stage.get("description", "") if isinstance(stage, dict) else ""
+            query = f"{workflow_spec.get('goal', '')}. {stage_name}: {description}"
+            for tool in self.retrieve_tools(query):
+                results.append({**tool, "stage": stage_name, "tool": tool.get("name", "")})
         return results
