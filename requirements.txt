@@ -1,2 +1,5 @@
 langgraph==1.2.0
 langchain-ollama
+faiss-gpu
+sentence-transformers
+numpy
