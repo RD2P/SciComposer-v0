@@ -10,10 +10,11 @@ class PlannerAgent:
     def __init__(
         self,
         model: str = "qwen3.5:9b",
+        client: Optional[Client] = None,
         host: Optional[str] = None,
     ) -> None:
         self.model = model
-        self._client = Client(host=host) if host else Client()
+        self._client = client if client is not None else (Client(host=host) if host else Client())
 
         self._prompt_path = (
             Path(__file__).resolve().parent.parent
