@@ -1,9 +1,14 @@
 from langgraph.graph import START, END, StateGraph
+from ollama import Client
 from schemas.schemas import WorkflowState
 from agents.planner import PlannerAgent
 from agents.retriever import RetrieverAgent
+from agents.builder import BuilderAgent
 
-planner_agent = PlannerAgent()
+OLLAMA_MODEL = "qwen3.5:9b"
+ollama_client = Client()
+planner_agent = PlannerAgent(model=OLLAMA_MODEL, client=ollama_client)
+builder_agent = BuilderAgent(model=OLLAMA_MODEL, client=ollama_client)
 retriever_agent: RetrieverAgent | None = None
 
 def planner_node(state: WorkflowState) -> WorkflowState:
@@ -36,16 +41,16 @@ def retriever_node(state: WorkflowState) -> WorkflowState:
     }
 
 
-def builder_node(state: WorkflowState) -> WorkflowState:
-    tools = state.get("candidate_tools", [])
+def builder_node(state: WorkflowState) -> dict:
+    result = builder_agent.build(
+        user_request=state["user_request"],
+        workflow_plan=state["workflow_plan"],
+        candidate_tools=state["candidate_tools"],
+        workflow_examples=state["workflow_examples"],
+    )
+
     return {
-        "workflow_graph": {
-            # "nodes": tools,
-            # "edges": [
-            #     ("FastQC", "Trimmomatic"),
-            #     ("Trimmomatic", "DESeq2"),
-            # ],
-        }
+        "workflow_graph": result
     }
 
 
