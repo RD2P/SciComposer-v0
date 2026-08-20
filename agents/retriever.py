@@ -7,7 +7,7 @@ from typing import Any
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from utils.model_loader import load_embedding_model
 
 
 @dataclass(frozen=True)
@@ -41,14 +41,12 @@ class RetrieverAgent:
         model: Any | None = None,
         model_name: str | None = None,
     ) -> None:
-        self._gpu_resources = faiss.StandardGpuResources()
         data_dir = Path(__file__).resolve().parent.parent / "data"
         self._tools = self._load_bundle(
             Path(tools_index_path) if tools_index_path else data_dir / "tools.faiss",
             Path(tools_metadata_path)
             if tools_metadata_path
             else data_dir / "tools_index_metadata.json",
-            self._gpu_resources,
         )
         self._workflows = self._load_bundle(
             Path(workflows_index_path)
@@ -57,7 +55,6 @@ class RetrieverAgent:
             Path(workflows_metadata_path)
             if workflows_metadata_path
             else data_dir / "workflows_index_metadata.json",
-            self._gpu_resources,
         )
 
         if self._tools["model"] != self._workflows["model"]:
@@ -70,20 +67,15 @@ class RetrieverAgent:
             raise ValueError(
                 f"Requested model {model_name!r} does not match index model {expected_model!r}"
             )
-        self.model = model or SentenceTransformer(
-            expected_model, device="cuda"
-        )
+        self.model = model or load_embedding_model(expected_model=expected_model)
 
     @staticmethod
     def _load_bundle(
         index_path: Path,
         metadata_path: Path,
-        gpu_resources: Any | None = None,
     ) -> dict[str, Any]:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         index = faiss.read_index(str(index_path))
-        if gpu_resources is not None:
-            index = faiss.index_cpu_to_gpu(gpu_resources, 0, index)
         dimension = int(metadata["dimension"])
         if index.d != dimension:
             raise ValueError(
