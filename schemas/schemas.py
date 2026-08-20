@@ -11,6 +11,12 @@ class WorkflowPlan(TypedDict):
     stages: list[WorkflowStage]
 
 
+class ToolCandidateGroup(TypedDict):
+    stage: str
+    description: str
+    candidates: list[dict]
+
+
 class WorkflowState(TypedDict, total=False):
     user_request: str
 
@@ -18,7 +24,7 @@ class WorkflowState(TypedDict, total=False):
     workflow_plan: WorkflowPlan
 
     # Retriever output
-    candidate_tools: list[dict]
+    candidate_tools: list[ToolCandidateGroup]
     workflow_examples: list[dict]
 
     # Builder output
