@@ -131,11 +131,22 @@ class RetrieverAgent:
         if top_k <= 0:
             return []
 
-        best_by_tool: dict[str, dict[str, Any]] = {}
-        for result in self.retrieve(workflow_spec):
-            tool_key = result.get("tool_id", result.get("name", ""))
-            if tool_key not in best_by_tool or result["score"] > best_by_tool[tool_key]["score"]:
-                best_by_tool[tool_key] = result
-        return sorted(
-            best_by_tool.values(), key=lambda result: result["score"], reverse=True
-        )[:top_k]
+        candidates_by_stage: list[dict[str, Any]] = []
+        for stage in workflow_spec.get("stages", []):
+            if not isinstance(stage, dict):
+                continue
+
+            stage_name = stage.get("name", "")
+            description = stage.get("description", "")
+            query = f"{workflow_spec.get('goal', '')}. {stage_name}: {description}"
+            candidates = self.retrieve_tools(query, top_k=top_k)
+
+            candidates_by_stage.append(
+                {
+                    "stage": stage_name,
+                    "description": description,
+                    "candidates": candidates,
+                }
+            )
+
+        return candidates_by_stage
