@@ -4,12 +4,14 @@ from schemas.schemas import WorkflowState
 from agents.planner import PlannerAgent
 from agents.retriever import RetrieverAgent
 from agents.builder import BuilderAgent
+from validator.validator import DeterministicWorkflowValidator
 
 OLLAMA_MODEL = "qwen3.5:9b"
 ollama_client = Client()
 planner_agent = PlannerAgent(model=OLLAMA_MODEL, client=ollama_client)
 builder_agent = BuilderAgent(model=OLLAMA_MODEL, client=ollama_client)
 retriever_agent: RetrieverAgent | None = None
+validator = DeterministicWorkflowValidator()
 
 def planner_node(state: WorkflowState) -> WorkflowState:
     request = state.get("user_request", "") or ""
@@ -56,12 +58,14 @@ def builder_node(state: WorkflowState) -> dict:
 
 def validator_node(state: WorkflowState) -> WorkflowState:
     graph = state.get("workflow_graph", {})
+    
+    # Validate the workflow graph
+    validation_result = validator.validate(graph)
+    
     return {
-        # "validation_report": {
-        #     "valid": bool(graph),
-        #     "issues": [],
-        # },
-        # "final_workflow": graph,
+        "validation_report": validation_result,
+        "final_workflow": graph,
+        "is_valid": validation_result.get("valid", False)
     }
 
 
