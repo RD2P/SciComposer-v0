@@ -3,6 +3,7 @@ from guard.guard import check_query
 import json
 from datetime import datetime
 import os
+import time
 
 
 def main() -> None:
@@ -23,7 +24,15 @@ def main() -> None:
             print("Query is not related to a Galaxy scientific workflow.")
             continue
 
+        print(f"\n[START] Processing query: {query}")
+        start_time = time.time()
+        
+        # Print status for each agent
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Planner agent starting...")
         result = app.invoke({"user_request": query})
+        end_time = time.time()
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] All agents completed in {end_time - start_time:.2f} seconds")
         
         # Create filename with date/time and first 3 words of query
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
