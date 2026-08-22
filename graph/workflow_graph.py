@@ -5,6 +5,8 @@ from agents.planner import PlannerAgent
 from agents.retriever import RetrieverAgent
 from agents.builder import BuilderAgent
 from validator.validator import DeterministicWorkflowValidator
+import time
+from datetime import datetime
 
 OLLAMA_MODEL = "qwen3.5:9b"
 ollama_client = Client()
@@ -14,8 +16,12 @@ retriever_agent: RetrieverAgent | None = None
 validator = DeterministicWorkflowValidator()
 
 def planner_node(state: WorkflowState) -> WorkflowState:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Planner agent executing...")
+    start_time = time.time()
     request = state.get("user_request", "") or ""
     res = planner_agent.plan(request)
+    end_time = time.time()
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Planner agent completed in {end_time - start_time:.2f} seconds")
     
     return {
         "workflow_plan": res
@@ -23,6 +29,8 @@ def planner_node(state: WorkflowState) -> WorkflowState:
 
 
 def retriever_node(state: WorkflowState) -> WorkflowState:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Retriever agent executing...")
+    start_time = time.time()
     global retriever_agent
     if retriever_agent is None:
         retriever_agent = RetrieverAgent()
@@ -37,30 +45,41 @@ def retriever_node(state: WorkflowState) -> WorkflowState:
         stage_context.append(f"{stage_name}: {description}")
 
     workflow_query = ". ".join([goal, *stage_context]).strip()
-    return {
+    result = {
         "candidate_tools": retriever_agent.retrieve_plan_tools(plan, top_k=3),
         "workflow_examples": retriever_agent.retrieve_workflows(workflow_query),
     }
+    end_time = time.time()
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Retriever agent completed in {end_time - start_time:.2f} seconds")
+    return result
 
 
 def builder_node(state: WorkflowState) -> dict:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Builder agent executing...")
+    start_time = time.time()
     result = builder_agent.build(
         user_request=state["user_request"],
         workflow_plan=state["workflow_plan"],
         candidate_tools=state["candidate_tools"],
         workflow_examples=state["workflow_examples"],
     )
-
+    end_time = time.time()
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Builder agent completed in {end_time - start_time:.2f} seconds")
+    
     return {
         "workflow_graph": result
     }
 
 
 def validator_node(state: WorkflowState) -> WorkflowState:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Validator agent executing...")
+    start_time = time.time()
     graph = state.get("workflow_graph", {})
     
     # Validate the workflow graph
     validation_result = validator.validate(graph)
+    end_time = time.time()
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Validator agent completed in {end_time - start_time:.2f} seconds")
     
     return {
         "validation_report": validation_result,
