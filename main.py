@@ -39,6 +39,32 @@ def main() -> None:
             json.dump(result, f, indent=2)
         
         print(f"Result saved to {output_path}")
+        
+        # Print formatted workflow information
+        workflow = result.get("workflow", {})
+        final_workflow = workflow.get("final_workflow", {})
+        nodes = final_workflow.get("nodes", [])
+        
+        if nodes:
+            print("\n=== FINAL WORKFLOW ===")
+            for i, node in enumerate(nodes, 1):
+                print(f"\nStage {i}:")
+                print(f"  Tool Name: {node.get('tool', 'Unknown')}")
+                print(f"  Reason: {node.get('reason', 'No reason provided')}")
+                
+                inputs = node.get('inputs', [])
+                if inputs:
+                    print("  Inputs:")
+                    for inp in inputs:
+                        print(f"    - {inp}")
+                
+                outputs = node.get('outputs', [])
+                if outputs:
+                    print("  Outputs:")
+                    for out in outputs:
+                        print(f"    - {out}")
+        else:
+            print("\nNo workflow nodes found.")
 
 
 if __name__ == "__main__":
