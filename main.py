@@ -50,15 +50,14 @@ def main() -> None:
         print(f"Result saved to {output_path}")
         
         # Print formatted workflow information
-        workflow = result.get("workflow", {})
-        final_workflow = workflow.get("final_workflow", {})
+        final_workflow = result.get("final_workflow", {})
         nodes = final_workflow.get("nodes", [])
         
         if nodes:
             print("\n=== FINAL WORKFLOW ===")
             for i, node in enumerate(nodes, 1):
                 print(f"\nStage {i}:")
-                print(f"  Tool Name: {node.get('tool', 'Unknown')}")
+                print(f"  Tool Name: {node.get('tool_name', 'Unknown')}")
                 print(f"  Reason: {node.get('reason', 'No reason provided')}")
                 
                 inputs = node.get('inputs', [])
